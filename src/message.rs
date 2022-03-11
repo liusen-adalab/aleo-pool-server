@@ -13,6 +13,7 @@ use tokio_util::codec::{Decoder, Encoder};
 #[allow(clippy::large_enum_variant)]
 pub enum ProverMessage {
     // as in stratum, with an additional protocol version field
+    // Authorize := (aleo_address, password, version)
     Authorize(Address<Testnet2>, String, u16),
     AuthorizeResult(bool, Option<String>),
 

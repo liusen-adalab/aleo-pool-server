@@ -30,7 +30,9 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::ServerMessage;
 
+/// a handler combind to standalone operator
 pub struct Node {
+    // operator's ip
     operator: String,
     sender: Sender<OperatorMessage>,
     receiver: Arc<Mutex<Receiver<OperatorMessage>>>,
@@ -38,6 +40,7 @@ pub struct Node {
 
 pub(crate) type OperatorMessage = Message<Testnet2, OperatorTrial<Testnet2>>;
 
+/// a simulated peer communicate with operator 
 impl Node {
     pub fn init(operator: String) -> Self {
         let (sender, receiver) = mpsc::channel(1024);
@@ -53,6 +56,7 @@ impl Node {
     }
 }
 
+/// start a simulated peer as a relay between operator and local server
 pub fn start(node: Node, server_sender: Sender<ServerMessage>) {
     let receiver = node.receiver;
     task::spawn(async move {

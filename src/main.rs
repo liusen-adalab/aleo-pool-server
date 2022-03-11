@@ -27,7 +27,7 @@ use crate::{
 #[derive(Debug, StructOpt)]
 #[structopt(name = "pool_server", about = "Aleo mining pool server", setting = structopt::clap::AppSettings::ColoredHelp)]
 struct Opt {
-    /// Full operator node address
+    /// Full operator node ip address
     #[structopt(short = "o", long = "operator")]
     operator: String,
 

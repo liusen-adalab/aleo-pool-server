@@ -42,11 +42,13 @@ impl Share {
     }
 }
 
+/// Pay-Per-Last-N-Shares
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Serialize, Deserialize, Clone)]
 struct PPLNS {
     queue: VecDeque<Share>,
     current_n: Arc<RwLock<u64>>,
+    /// "last n" limitation
     n: Arc<RwLock<u64>>,
 }
 
@@ -97,19 +99,27 @@ impl PayoutModel for PPLNS {
 struct Null {}
 
 pub enum AccountingMessage {
+    /// prover submited a new share
     NewShare(String, u64),
+    /// set the "n" of "pplns"
     SetN(u64),
+    /// prover mined a unconfirmed block
     NewBlock(u32, <Testnet2 as Network>::BlockHash),
     Exit,
 }
 
+/// Calculate and save provers' shares
 #[allow(clippy::type_complexity)]
 pub struct Accounting {
     operator: String,
     pplns: Arc<TokioRwLock<PPLNS>>,
     pplns_storage: StorageData<Null, PPLNS>,
+    /// block_reward_storage := ((block_height, block_hash), pplns)
+    /// Every mined block corresponeds to a pplns. Provers will receive reward from these pplns record.
     block_reward_storage: StorageData<(u32, <Testnet2 as Network>::BlockHash), PPLNS>,
     sender: Sender<AccountingMessage>,
+    /// round_cache := (provers_nums, Map<owner, share_value>)
+    /// Currently each round lasts 10s
     round_cache: TokioRwLock<Cache<(u32, HashMap<String, u64>)>>,
     exit_lock: Arc<AtomicBool>,
 }
@@ -150,6 +160,8 @@ impl Accounting {
                         pplns.write().await.set_n(n);
                         debug!("Set N to {}", n);
                     }
+                    // received an unconfirmed block from prover
+                    // save current pplns state in DB
                     NewBlock(height, block_hash) => {
                         if let Err(e) = block_reward_storage.put(&(height, block_hash), &pplns.read().await.clone()) {
                             error!("Failed to save block reward : {}", e);
@@ -165,7 +177,7 @@ impl Accounting {
             }
         });
 
-        // backup pplns
+        // backup pplns periodically 
         let pplns = accounting.pplns.clone();
         let pplns_storage = accounting.pplns_storage.clone();
         task::spawn(async move {
@@ -190,6 +202,7 @@ impl Accounting {
         }
     }
 
+    /// Iterate pplns' share queue and convert it to the form as (provers_num, Map<prover_addr, shares>)
     fn pplns_to_provers_shares(pplns: &PPLNS) -> (u32, HashMap<String, u64>) {
         let mut address_shares = HashMap::new();
 
@@ -225,6 +238,8 @@ impl Accounting {
         })
     }
 
+    /// Return all blocks the pool mined.
+    /// Currently only admin is allow to call it.
     pub async fn all_blocks_mined(&self) -> Result<serde_json::Value> {
         let client = reqwest::Client::new();
         let latest_block_height: u32 = client

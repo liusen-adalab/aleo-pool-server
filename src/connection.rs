@@ -14,6 +14,7 @@ use tracing::{error, info, trace, warn};
 
 use crate::{message::ProverMessage, server::ServerMessage};
 
+/// connection between server and prover
 pub struct Connection {
     address: Option<Address<Testnet2>>,
     version: u16,
@@ -23,10 +24,13 @@ static MIN_SUPPORTED_VERSION: u16 = 1;
 static MAX_SUPPORTED_VERSION: u16 = 1;
 
 impl Connection {
+    /// setup a connection between Server and authorized Prover
     pub async fn init(stream: TcpStream, peer_addr: SocketAddr, server_sender: Sender<ServerMessage>) {
         task::spawn(Connection::run(stream, peer_addr, server_sender));
     }
 
+    /// Verify that the connecting prover is valid, and if so, start a loop to relay the communication
+    /// between Server and Prover
     pub async fn run(stream: TcpStream, peer_addr: SocketAddr, server_sender: Sender<ServerMessage>) {
         let mut framed = Framed::new(stream, ProverMessage::Canary);
 
@@ -63,12 +67,15 @@ impl Connection {
 
         loop {
             tokio::select! {
+                // Received a message from server and send it to prover
                 Some(msg) = receiver.recv() => {
                     trace!("Sending message {} to peer {:?}", msg.name(), peer_addr);
                     if let Err(e) = framed.send(msg).await {
                         error!("Failed to send message to peer {:?}: {:?}", peer_addr, e);
                     }
                 }
+                // Received a message from prover and send it to server
+                // Currently only process `ProverMessage::Submit`
                 result = framed.next() => match result {
                     Some(Ok(msg)) => {
                         trace!("Received message {} from peer {:?}", msg.name(), peer_addr);
@@ -108,12 +115,15 @@ impl Connection {
         }
     }
 
+    /// Currently password is not required
+    /// In order to pass authorization prover must send a `ProverMessage::Authorize` as soon as tcp connection is made
     pub async fn authorize(framed: &mut Framed<TcpStream, ProverMessage>) -> Result<(Address<Testnet2>, u16)> {
         let peer_addr = framed.get_ref().peer_addr()?;
         match framed.next().await {
             Some(Ok(message)) => {
                 trace!("Received message {} from peer {:?}", message.name(), peer_addr);
                 match message {
+                    // no password needed
                     ProverMessage::Authorize(address, _, version) => {
                         if version > MAX_SUPPORTED_VERSION || version < MIN_SUPPORTED_VERSION {
                             warn!("Peer {:?} is using unsupported version {}", peer_addr, version);

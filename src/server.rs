@@ -121,6 +121,8 @@ impl ProverState {
         }
     }
 
+    /// record new share of the prover
+    /// next_difficulty = cur_difficulty * sqrt(speed_1m * 20) (>= 1)
     pub async fn add_share(&mut self, value: u64) {
         let now = Instant::now();
         self.speed_1m.event(1).await;
@@ -206,6 +208,8 @@ impl PoolState {
         }
     }
 
+    /// record a new share
+    /// next_modifier = cur_modifier * speed_1m / 10 || (>= 1) 
     pub async fn add_share(&mut self, value: u64) {
         let now = Instant::now();
         self.speed_1m.event(1).await;
@@ -244,11 +248,16 @@ impl PoolState {
 
 #[allow(clippy::large_enum_variant)]
 pub enum ServerMessage {
+    // from prover 
     ProverConnected(TcpStream, SocketAddr),
     ProverAuthenticated(SocketAddr, Address<Testnet2>, Sender<ProverMessage>),
     ProverDisconnected(SocketAddr),
     ProverSubmit(SocketAddr, u32, <Testnet2 as Network>::PoSWNonce, PoSWProof<Testnet2>),
+
+    // from operator 
     NewBlockTemplate(BlockTemplate<Testnet2>),
+
+    // from server machine 
     Exit,
 }
 
@@ -271,6 +280,7 @@ impl Display for ServerMessage {
     }
 }
 
+/// a server that communicates with provers
 pub struct Server {
     sender: Sender<ServerMessage>,
     operator_sender: Sender<OperatorMessage>,
@@ -278,13 +288,19 @@ pub struct Server {
     connected_provers: RwLock<HashSet<SocketAddr>>,
     authenticated_provers: Arc<RwLock<HashMap<SocketAddr, Sender<ProverMessage>>>>,
     pool_state: Arc<RwLock<PoolState>>,
+    
+    // each host has specifec status
     prover_states: Arc<RwLock<HashMap<SocketAddr, RwLock<ProverState>>>>,
-    prover_address_connections: Arc<RwLock<HashMap<Address<Testnet2>, HashSet<SocketAddr>>>>,
+
+    // multiple ip address can be bound to one aleo address 
+    prover_address_connections: Arc<RwLock<HashMap<Address<Testnet2>, HashSet<SocketAddr>>>>, 
+
     latest_block_height: AtomicU32,
     latest_block_template: Arc<RwLock<Option<BlockTemplate<Testnet2>>>>,
 }
 
 impl Server {
+    /// setup a server to process provers' connection request and message
     pub async fn init(
         port: u16,
         operator_sender: Sender<OperatorMessage>,
@@ -316,6 +332,7 @@ impl Server {
             latest_block_template: Default::default(),
         });
 
+        // setup a server listener to accept provers' connection request
         let s = server.clone();
         task::spawn(async move {
             loop {
@@ -333,6 +350,7 @@ impl Server {
             }
         });
 
+        // setup a task to relay message from prover's `Connection`
         let s = server.clone();
         task::spawn(async move {
             let server = s.clone();
@@ -358,6 +376,7 @@ impl Server {
                 self.connected_provers.write().await.insert(peer_addr);
                 Connection::init(stream, peer_addr, self.sender.clone()).await;
             }
+            // record the authorized prover and notify it the latest `block_template`
             ServerMessage::ProverAuthenticated(peer_addr, address, sender) => {
                 self.authenticated_provers
                     .write()
@@ -386,6 +405,7 @@ impl Server {
                     }
                 }
             }
+            // remove disconnected prover from `self.connected_provers` and `self.authenticated_provers`
             ServerMessage::ProverDisconnected(peer_addr) => {
                 let state = self.prover_states.write().await.remove(&peer_addr);
                 let address = match state {
@@ -405,6 +425,8 @@ impl Server {
                 self.connected_provers.write().await.remove(&peer_addr);
                 self.authenticated_provers.write().await.remove(&peer_addr);
             }
+            // received a new block template from Operator
+            // notify authorized provers of the new template and diffcult target
             ServerMessage::NewBlockTemplate(block_template) => {
                 info!("New block template: {}", block_template.block_height());
                 self.latest_block_height
@@ -443,6 +465,9 @@ impl Server {
                     }
                 }
             }
+            // record share if the submit met the pool's difficult target 
+            // record block reward if it met the template's target
+            // ?? where and how to process the block reward?
             ServerMessage::ProverSubmit(peer_addr, block_height, nonce, proof) => {
                 let prover_states = self.prover_states.clone();
                 let pool_state = self.pool_state.clone();
@@ -555,6 +580,7 @@ impl Server {
                             proof_difficulty,
                             block_template.difficulty_target()
                         );
+                        // the proof meets the difficult target of the template, send it to operator...
                         if let Err(e) = operator_sender
                             .send(OperatorMessage::PoolBlock(nonce, Data::Object(proof)))
                             .await
