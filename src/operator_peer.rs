@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::ServerMessage;
 
-/// a handler bounds to standalone operator
+/// a handler combind to standalone operator
 pub struct Node {
     // operator's ip
     operator: String,
@@ -84,14 +84,12 @@ pub fn start(node: Node, server_sender: Sender<ServerMessage>) {
                         let receiver = &mut *receiver.lock().await;
                         loop {
                             tokio::select! {
-                                // receive a message from Server and send it to operator
                                 Some(message) = receiver.recv() => {
                                     trace!("Sending {} to operator", message.name());
                                     if let Err(e) = framed.send(message.clone()).await {
                                         error!("Error sending {}: {:?}", message.name(), e);
                                     }
                                 }
-                                // recieve and process the message from operator
                                 result = framed.next() => match result {
                                     Some(Ok(message)) => {
                                         trace!("Received {} from operator", message.name());

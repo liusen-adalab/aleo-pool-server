@@ -88,13 +88,13 @@ async fn main() {
 
     let operator = opt.operator;
     let port = opt.port;
-
+    // init or load users account, set pplns
     let accounting = Accounting::init(operator.clone());
-
+    // init a Node as relay between Opreator and Server
     let node = Node::init(operator);
-
+    // startup the Server as the information pivot of Provers, Accounting and Operator
     let server = Server::init(port, node.sender(), accounting.sender()).await;
-
+    // startup Node
     operator_peer::start(node, server.sender());
 
     api::start(opt.api_port, accounting.clone(), server.clone());
