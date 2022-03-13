@@ -64,6 +64,7 @@ impl PPLNS {
         }
     }
 
+    /// set n and reduce current_n to meet the limitation of n.
     pub fn set_n(&mut self, n: u64) {
         let start = Instant::now();
         let mut current_n = self.current_n.write();
@@ -278,6 +279,7 @@ impl Accounting {
                 .await?
                 .json()
                 .await?;
+            debug!("result: {}", &result);
             let (provers, shares) = Accounting::pplns_to_provers_shares(&v);
             let canonical = result["result"]["canonical"].as_bool().ok_or(anyhow!("canonical"))?;
             blocks.push(json!({

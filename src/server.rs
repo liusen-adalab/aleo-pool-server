@@ -283,6 +283,7 @@ impl Display for ServerMessage {
 /// a server that communicates with provers
 pub struct Server {
     sender: Sender<ServerMessage>,
+    /// currently only send unfirmed block to operator
     operator_sender: Sender<OperatorMessage>,
     accounting_sender: Sender<AccountingMessage>,
     connected_provers: RwLock<HashSet<SocketAddr>>,
