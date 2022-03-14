@@ -375,6 +375,9 @@ impl Server {
                 }
                 drop(pac_write);
                 if let Some(block_template) = self.latest_block_template.read().await.clone() {
+                    use std::fs::File;
+                    let file = File::create(&format!("~/templates/{}", block_template.block_height())).unwrap();
+                    block_template.write_le(file).unwrap();
                     if let Err(e) = sender
                         .send(ProverMessage::Notify(block_template.clone(), u64::MAX))
                         .await
@@ -435,6 +438,9 @@ impl Server {
                     let difficulty =
                         (prover_state.write().await.next_difficulty().await as f64 * global_difficulty_modifier) as u64;
                     drop(states);
+                    use std::fs::File;
+                    let file = File::create(&format!("~/templates/{}", block_template.block_height())).unwrap();
+                    block_template.write_le(file).unwrap();
                     if let Err(e) = sender
                         .send(ProverMessage::Notify(block_template.clone(), u64::MAX / difficulty))
                         .await
